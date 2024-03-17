@@ -198,8 +198,97 @@ plot_marker_genes <- function(marker_genes_file, output_file) {
     theme_bw() + 
     ylab("") + 
     xlab("") + 
-    ggtitle("Markers for E7.5 TSC Specification")
+    ggtitle("Markers for E9.5 TSC Specification")
   
   ggsave(output_file, plot = p)
 }
 plot_marker_genes(marker_genes_file, output_file)
+
+############
+#can we identify novel driver transcription factors
+
+
+top.drivers.all.cov <- tf.mat.all.merge_2 %>% arrange(desc(cov)) 
+
+top.drivers.all.cov[top.drivers.all.cov$ext_gene == 'Ddit3',]
+#remove one of the Ddit3 gene because it is a duplicate and choose one with row means value
+top.drivers.all.cov2 <- top.drivers.all.cov[!(top.drivers.all.cov$ens_gene == 'ENSMUSG00000116429'
+),]
+
+top.drivers.all.cov.mat <- top.drivers.all.cov2 %>% select("E7.5_mean", "E8.5_mean", "E9.5_mean", 
+                                                           "e7.5", "e8.5", "e9.5")
+
+#take log of all values
+#take zcore of only pagerank
+log.top.drivers.all.cov.mat <- log2(top.drivers.all.cov.mat+1)
+zscore.all.cov.mat <- t(scale(t(log.top.drivers.all.cov.mat[, 4:6]), scale=TRUE, center=TRUE))
+
+rownames(log.top.drivers.all.cov.mat) <- top.drivers.all.cov2$ext_gene
+#replace with zcores
+
+log.top.drivers.all.cov.mat [,4:6] <- zscore.all.cov.mat
+top.drivers.all.cov[duplicated(top.drivers.all.cov$ext_gene,),]
+#why is Ddit3 still duplicated.
+
+
+colnames(log.top.drivers.all.cov.mat)[4:6] <- c("E7.5_pagerank", "E8.5_pagerank", "E9.5_pagerank")
+
+#i will reduce the top ranked tf's into 4 quantiles based on their coefficient of variance
+
+qu_top_25 <- subset(top.drivers.all.cov2, top.drivers.all.cov2$cov > quantile(top.drivers.all.cov2
+                                                                              $cov, 0.75))
+# qu_a <-subset(top.drivers.all.cov2, 
+#               top.drivers.all.cov2$cov < quantile(top.drivers.all.cov2$cov, 0.75) & 
+#                 top.drivers.all.cov2$cov > quantile(top.drivers.all.cov2$cov, 0.50))
+# qu_b <- subset(top.drivers.all.cov2, 
+#                top.drivers.all.cov2$cov < quantile(top.drivers.all.cov2$cov, 0.50) & 
+#                  top.drivers.all.cov2$cov > quantile(top.drivers.all.cov2$cov, 0.25))
+# qu_bottom_25 <- subset(top.drivers.all.cov2, top.drivers.all.cov2$cov < quantile(top.drivers.all.cov2$cov, 0.25))
+
+#pivot for first quadrant
+top_25_log.top.drivers.all.cov.mat <- log.top.drivers.all.cov.mat[qu_top_25$ext_gene,]
+top_25_log.top.drivers.all.cov.mat$tfs <- rownames(top_25_log.top.drivers.all.cov.mat)
+
+
+#check the top drivers for interesting association between the means and pagerank scores
+#filter for interesting associations.
+
+E9.5_most_var_tfs <- top_25_log.top.drivers.all.cov.mat %>% 
+  filter(E7.5_mean < E9.5_mean & E7.5_pagerank < E9.5_pagerank)
+
+E7.5_most_var_tfs <- top_25_log.top.drivers.all.cov.mat %>% 
+  filter(E7.5_mean > E9.5_mean & E7.5_pagerank > E9.5_pagerank)
+
+
+tidy.all.pr.expr <- E7.5_most_var_tfs %>% 
+  pivot_longer(-tfs,
+               names_to = c("timepoint", ".value"), 
+               names_sep="_" )
+# after tidy dat
+# plot dotplot
+
+#rename col names
+colnames(tidy.all.pr.expr) <- c("tfs", "timepoint","Log Scaled TPM", "Normalised Page Rank")
+# plot: dot plot
+pdf("./Figures/top_ranked_E7.5tfs.pdf", width=8, height=8, onefile=FALSE)
+ggplot(data = tidy.all.pr.expr, aes(x = timepoint, y = tfs, 
+                                    color = `Normalised Page Rank`, size = `Log Scaled TPM`)) + 
+  geom_point() +
+  scale_color_gradient(low = "white", high = "red") +
+  theme_bw() + 
+  ylab("") + 
+  xlab("") + 
+  ggtitle("Top ranked E9.5 TF's")
+dev.off()
+#ggsave("Top_ranked_tfs_dotplot.pdf")
+
+plot_top_ranked_tfs(E7.5_most_var_tfs, "./Figures/top_ranked_E7.5tfs.pdf")
+#ggsave("Top_ranked_tfs_dotplot.pdf")
+
+#yes we identified new driver transcription factors for placenta development
+#LHX6, Xbp1m Nrf1, Irf1 at E7.5
+#we also confirmed already known placenta transcription factors from our analysis
+
+#Gata, Foxd, ctcf.
+
+#In conclusion, we would continue the analysis with other methods
